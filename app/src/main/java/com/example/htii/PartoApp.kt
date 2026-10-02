@@ -202,10 +202,14 @@ fun PartoApp(viewModel: StreamViewModel) {
                             onPermission = requestVideoAccess,
                             onPickVideo = { documentLauncher.launch(arrayOf("video/*")) },
                             onPlay = viewModel::playLocalVideo,
+                            onVideoUrlChange = viewModel::setVideoUrlInput,
+                            onPlayVideoUrl = viewModel::playVideoUrl,
                             onBrowse = { viewModel.selectTab(AppTab.RECEIVER) },
                         )
                         AppTab.RECEIVER -> ReceiverScreen(
                             state = state,
+                            onDiscoverDevices = viewModel::discoverDevices,
+                            onSelectDevice = viewModel::selectDevice,
                         )
                     }
                 }
@@ -288,6 +292,8 @@ private fun LibraryScreen(
     onPermission: () -> Unit,
     onPickVideo: () -> Unit,
     onPlay: (VideoItem) -> Unit,
+    onVideoUrlChange: (String) -> Unit,
+    onPlayVideoUrl: () -> Unit,
     onBrowse: () -> Unit,
 ) {
     val filteredVideos = remember(state.videos, state.searchQuery) {
@@ -306,6 +312,14 @@ private fun LibraryScreen(
     ) {
         item {
             HeroCard(onBrowse = onBrowse)
+        }
+        item {
+            VideoUrlCard(
+                value = state.videoUrlInput,
+                onValueChange = onVideoUrlChange,
+                onPlay = onPlayVideoUrl,
+                isLoading = state.isStreaming,
+            )
         }
         item {
             Row(
@@ -388,6 +402,55 @@ private fun LibraryScreen(
                 style = MaterialTheme.typography.labelSmall,
             )
         }
+    }
+}
+
+@Composable
+private fun VideoUrlCard(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onPlay: () -> Unit,
+    isLoading: Boolean,
+) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            stringResource(R.string.video_link_title),
+            color = SoftWhite,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            stringResource(R.string.video_link_subtitle),
+            color = MutedWhite,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.height(11.dp))
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text(stringResource(R.string.url_hint), color = MutedWhite) },
+                leadingIcon = { Icon(Icons.Outlined.Language, null, tint = Aqua) },
+                shape = RoundedCornerShape(17.dp),
+                colors = glassTextFieldColors(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Go,
+                ),
+                keyboardActions = KeyboardActions(onGo = { onPlay() }),
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        AccentButton(
+            label = stringResource(R.string.send_video),
+            icon = Icons.Outlined.Tv,
+            onClick = onPlay,
+            modifier = Modifier.fillMaxWidth(),
+            loading = isLoading,
+        )
     }
 }
 
@@ -494,7 +557,11 @@ private fun VideoRow(video: VideoItem, onPlay: () -> Unit) {
 }
 
 @Composable
-private fun ReceiverScreen(state: StreamUiState) {
+private fun ReceiverScreen(
+    state: StreamUiState,
+    onDiscoverDevices: () -> Unit,
+    onSelectDevice: (DlnaDevice) -> Unit,
+) {
     val context = LocalContext.current
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -522,6 +589,78 @@ private fun ReceiverScreen(state: StreamUiState) {
         }
         item {
             GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        stringResource(R.string.available_tvs),
+                        color = SoftWhite,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    TextButton(
+                        onClick = onDiscoverDevices,
+                        enabled = !state.isDiscoveringDevices,
+                    ) {
+                        if (state.isDiscoveringDevices) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Aqua,
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(Icons.Outlined.Devices, null, tint = Aqua)
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            stringResource(R.string.search_tvs),
+                            color = Aqua,
+                        )
+                    }
+                }
+                if (state.dlnaDevices.isEmpty()) {
+                    Text(stringResource(R.string.no_tv_found), color = MutedWhite)
+                } else {
+                    state.dlnaDevices.forEach { device ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(15.dp))
+                                .background(
+                                    if (state.selectedDevice?.id == device.id) {
+                                        Indigo.copy(alpha = .24f)
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                )
+                                .clickable(enabled = !state.isStreaming) { onSelectDevice(device) }
+                                .padding(horizontal = 10.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.Tv, null, tint = Aqua)
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                device.name,
+                                color = SoftWhite,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (state.selectedDevice?.id == device.id) {
+                                Text(
+                                    stringResource(R.string.selected_tv),
+                                    color = Aqua,
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     state.selectedVideoTitle?.let {
                         stringResource(R.string.selected_video, it)
@@ -530,13 +669,26 @@ private fun ReceiverScreen(state: StreamUiState) {
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.height(12.dp))
-                if (state.serverUrl.isBlank()) {
+                val shareUrl = state.serverUrl.ifBlank { state.playbackUrl }
+                if (state.isStreaming) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(17.dp),
+                            color = Aqua,
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.sending_to_tv), color = Aqua)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                }
+                if (shareUrl.isBlank()) {
                     Text(stringResource(R.string.choose_video_first), color = MutedWhite)
                 } else {
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                         SelectionContainer {
                             Text(
-                                state.serverUrl,
+                                shareUrl,
                                 color = Aqua,
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.fillMaxWidth(),
@@ -547,7 +699,7 @@ private fun ReceiverScreen(state: StreamUiState) {
                     TextButton(
                         onClick = {
                             context.getSystemService(ClipboardManager::class.java)
-                                .setPrimaryClip(ClipData.newPlainText("Parto receiver URL", state.serverUrl))
+                                .setPrimaryClip(ClipData.newPlainText("Parto receiver URL", shareUrl))
                         },
                     ) {
                         Icon(Icons.Outlined.ContentCopy, contentDescription = null, tint = Aqua)

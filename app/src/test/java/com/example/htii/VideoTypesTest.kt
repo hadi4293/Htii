@@ -29,6 +29,8 @@ class VideoTypesTest {
             "video/mp4",
             VideoTypes.fromUrl("https://media.example/video.mp4?token=sample"),
         )
+        assertEquals("video/x-matroska", VideoTypes.fromUrl("http://media.example/movie.mkv"))
+        assertEquals("video/mp4", VideoTypes.fromUrl("http://media.example/movie.mp4?download=1"))
         assertEquals(
             "application/vnd.apple.mpegurl",
             VideoTypes.fromUrl("https://media.example/live.m3u8"),
