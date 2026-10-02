@@ -1,13 +1,15 @@
 package com.example.htii
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
 import java.net.DatagramPacket
-import java.net.DatagramSocket
 import java.net.HttpURLConnection
-import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.MulticastSocket
+import java.net.NetworkInterface
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
@@ -29,27 +31,24 @@ class DlnaController(context: Context) {
         }
         try {
             val locations = linkedSetOf<String>()
-            DatagramSocket(null).use { socket ->
+            val networkInterface = wifiNetworkInterface()
+            MulticastSocket(null).use { socket ->
                 socket.reuseAddress = true
-                socket.bind(java.net.InetSocketAddress(0))
+                socket.bind(InetSocketAddress(0))
+                socket.networkInterface = networkInterface
+                socket.timeToLive = MULTICAST_TTL
                 socket.soTimeout = DISCOVERY_READ_TIMEOUT_MS
-                val search = """
-                    M-SEARCH * HTTP/1.1
-                    HOST: 239.255.255.250:1900
-                    MAN: "ssdp:discover"
-                    MX: 2
-                    ST: urn:schemas-upnp-org:device:MediaRenderer:1
-
-                """.trimIndent().replace("\n", "\r\n")
-                val payload = search.toByteArray(Charsets.US_ASCII)
-                socket.send(
-                    DatagramPacket(
-                        payload,
-                        payload.size,
-                        InetAddress.getByName(SSDP_ADDRESS),
-                        SSDP_PORT,
-                    ),
-                )
+                SsdpDiscovery.searchTargets.forEach { target ->
+                    val payload = SsdpDiscovery.searchRequest(target)
+                    socket.send(
+                        DatagramPacket(
+                            payload,
+                            payload.size,
+                            SSDP_ADDRESS,
+                            SSDP_PORT,
+                        ),
+                    )
+                }
                 val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(DISCOVERY_DURATION_SECONDS)
                 val buffer = ByteArray(8_192)
                 while (System.nanoTime() < deadline) {
@@ -57,21 +56,44 @@ class DlnaController(context: Context) {
                         val packet = DatagramPacket(buffer, buffer.size)
                         socket.receive(packet)
                         val response = String(packet.data, packet.offset, packet.length, Charsets.US_ASCII)
-                        response.lineSequence()
-                            .firstOrNull { it.startsWith("location:", ignoreCase = true) }
-                            ?.substringAfter(':')
-                            ?.trim()
-                            ?.takeIf(String::isNotBlank)
-                            ?.let(locations::add)
+                        SsdpDiscovery.location(response)?.let(locations::add)
                     } catch (_: java.net.SocketTimeoutException) {
                         continue
                     }
                 }
             }
-            return locations.mapNotNull(::readDeviceDescription).distinctBy(DlnaDevice::id)
+            val devices = mutableListOf<DlnaDevice>()
+            val descriptionErrors = mutableListOf<Exception>()
+            locations.forEach { location ->
+                try {
+                    readDeviceDescription(location)?.let(devices::add)
+                } catch (exception: Exception) {
+                    descriptionErrors += exception
+                }
+            }
+            if (devices.isEmpty() && descriptionErrors.isNotEmpty()) {
+                throw IllegalStateException(
+                    "پاسخ تلویزیون دریافت شد اما مشخصات DLNA خوانده نشد: " +
+                        (descriptionErrors.first().localizedMessage ?: "خطای ناشناخته"),
+                    descriptionErrors.first(),
+                )
+            }
+            return devices.distinctBy(DlnaDevice::id)
         } finally {
             multicastLock.release()
         }
+    }
+
+    private fun wifiNetworkInterface(): NetworkInterface {
+        val connectivity = applicationContext.getSystemService(ConnectivityManager::class.java)
+        val activeName = connectivity.activeNetwork
+            ?.let(connectivity::getLinkProperties)
+            ?.interfaceName
+        val interfaces = NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+            .filter { it.isUp && !it.isLoopback && it.supportsMulticast() }
+        return interfaces.firstOrNull { it.name == activeName }
+            ?: interfaces.firstOrNull { it.name.startsWith("wlan", ignoreCase = true) }
+            ?: throw IllegalStateException("رابط شبکهٔ Wi-Fi پیدا نشد؛ اتصال گوشی را بررسی کنید.")
     }
 
     fun play(device: DlnaDevice, mediaUrl: String, title: String, mimeType: String) {
@@ -186,10 +208,11 @@ class DlnaController(context: Context) {
         .replace("'", "&apos;")
 
     private companion object {
-        const val SSDP_ADDRESS = "239.255.255.250"
+        val SSDP_ADDRESS = java.net.InetAddress.getByName("239.255.255.250")
         const val SSDP_PORT = 1900
         const val DISCOVERY_READ_TIMEOUT_MS = 600
         const val DISCOVERY_DURATION_SECONDS = 4L
         const val HTTP_TIMEOUT_MS = 5_000
+        const val MULTICAST_TTL = 2
     }
 }

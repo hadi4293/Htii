@@ -46,6 +46,28 @@ class VideoTypesTest {
     }
 
     @Test
+    fun ssdpSearchRequestsSupportCommonDlnaTargets() {
+        assertEquals(6, SsdpDiscovery.searchTargets.size)
+        val request = String(
+            SsdpDiscovery.searchRequest("ssdp:all"),
+            Charsets.US_ASCII,
+        )
+        assertEquals(true, request.startsWith("M-SEARCH * HTTP/1.1\r\n"))
+        assertEquals(true, request.contains("ST: ssdp:all\r\n\r\n"))
+    }
+
+    @Test
+    fun readsSsdpLocationHeaderWithoutCaseSensitivity() {
+        assertEquals(
+            "http://192.168.1.20:1400/description.xml",
+            SsdpDiscovery.location(
+                "HTTP/1.1 200 OK\r\nCACHE-CONTROL: max-age=120\r\n LOCATION : http://192.168.1.20:1400/description.xml\r\n",
+            ),
+        )
+        assertNull(SsdpDiscovery.location("HTTP/1.1 200 OK\r\nST: ssdp:all\r\n"))
+    }
+
+    @Test
     fun normalizesBareHostsToHttps() {
         assertEquals("https://media.example", VideoTypes.validWebUrl("media.example"))
         assertEquals("http://media.example/movie.mp4", VideoTypes.validWebUrl("http://media.example/movie.mp4"))

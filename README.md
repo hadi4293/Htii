@@ -20,7 +20,7 @@
 - Android SDK Platform 36 و Build Tools
 - JDK 17 یا 21
 
-نسخهٔ جاری: **2.2.0**. فایل نصب و تغییرات هر نسخه از بخش [Releases مخزن](https://github.com/hadi4293/Htii/releases) در دسترس است.
+نسخهٔ جاری: **2.2.1**. فایل نصب و تغییرات هر نسخه از بخش [Releases مخزن](https://github.com/hadi4293/Htii/releases) در دسترس است.
 
 در Android Studio پروژه را باز کنید و پس از Gradle Sync پیکربندی `app` را روی گوشی یا شبیه‌ساز اجرا کنید. برای ساخت APK اشکال‌زدایی:
 
