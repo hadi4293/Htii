@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.htii"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.0.1"
+        versionCode = 4
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -54,8 +54,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.google.cast.framework)
-    implementation(libs.androidx.mediarouter)
     implementation(libs.nanohttpd)
 
     testImplementation(libs.junit)

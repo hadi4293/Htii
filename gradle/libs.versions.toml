@@ -7,8 +7,6 @@ coreKtx = "1.17.0"
 junit = "4.13.2"
 androidxTest = "1.6.2"
 espresso = "3.6.1"
-cast = "22.3.1"
-mediaRouter = "1.8.1"
 nanoHttpd = "2.3.1"
 lifecycle = "2.9.4"
 
@@ -29,8 +27,6 @@ junit = { module = "junit:junit", version.ref = "junit" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version = "1.2.1" }
 androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTest" }
 androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
-google-cast-framework = { module = "com.google.android.gms:play-services-cast-framework", version.ref = "cast" }
-androidx-mediarouter = { module = "androidx.mediarouter:mediarouter", version.ref = "mediaRouter" }
 nanohttpd = { module = "org.nanohttpd:nanohttpd", version.ref = "nanoHttpd" }
 
 [plugins]

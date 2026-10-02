@@ -6,6 +6,24 @@ import org.junit.Test
 
 class VideoTypesTest {
     @Test
+    fun parsesBoundedOpenEndedAndSuffixByteRanges() {
+        assertEquals(ByteRange(10, 19), ByteRangeParser.parse("bytes=10-19", 100))
+        assertEquals(ByteRange(90, 99), ByteRangeParser.parse("bytes=90-", 100))
+        assertEquals(ByteRange(90, 99), ByteRangeParser.parse("bytes=-10", 100))
+        assertEquals(ByteRange(0, 99), ByteRangeParser.parse("bytes=-200", 100))
+    }
+
+    @Test
+    fun rejectsInvalidAndMultipleByteRanges() {
+        assertNull(ByteRangeParser.parse("items=0-1", 100))
+        assertNull(ByteRangeParser.parse("bytes=100-101", 100))
+        assertNull(ByteRangeParser.parse("bytes=20-10", 100))
+        assertNull(ByteRangeParser.parse("bytes=0-1,4-5", 100))
+        assertNull(ByteRangeParser.parse("bytes=-0", 100))
+        assertNull(ByteRangeParser.parse("bytes=0-", 0))
+    }
+
+    @Test
     fun detectsCommonStreamingFormatsEvenWhenUrlHasAQuery() {
         assertEquals(
             "video/mp4",

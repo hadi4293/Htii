@@ -11,14 +11,6 @@ data class VideoItem(
     val durationMs: Long = 0,
 )
 
-data class DlnaDevice(
-    val id: String,
-    val name: String,
-    val location: String,
-    val controlUrl: String,
-    val serviceType: String,
-)
-
 data class WebVideo(
     val title: String,
     val url: String,
@@ -27,8 +19,7 @@ data class WebVideo(
 
 enum class AppTab {
     LIBRARY,
-    BROWSER,
-    DEVICES,
+    RECEIVER,
 }
 
 data class StreamUiState(
@@ -37,14 +28,11 @@ data class StreamUiState(
     val isLoadingVideos: Boolean = false,
     val selectedTab: AppTab = AppTab.LIBRARY,
     val searchQuery: String = "",
-    val dlnaDevices: List<DlnaDevice> = emptyList(),
-    val selectedDlnaDevice: DlnaDevice? = null,
-    val isScanning: Boolean = false,
+    val isStreaming: Boolean = false,
+    val serverUrl: String = "",
+    val selectedVideoTitle: String? = null,
     val detectedWebVideos: List<WebVideo> = emptyList(),
     val browserUrl: String = "",
-    val isCastAvailable: Boolean = true,
-    val isCastConnected: Boolean = false,
-    val isStreaming: Boolean = false,
     val message: String? = null,
 )
 

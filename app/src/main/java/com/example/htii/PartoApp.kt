@@ -2,11 +2,10 @@ package com.example.htii
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
-import android.view.ContextThemeWrapper
-import android.view.View
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -25,8 +24,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,20 +34,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Cast
-import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Movie
 import androidx.compose.material.icons.outlined.PlayArrow
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tv
 import androidx.compose.material.icons.outlined.VideoLibrary
@@ -74,6 +66,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -87,26 +80,24 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.mediarouter.app.MediaRouteButton
-import com.google.android.gms.cast.framework.CastButtonFactory
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -118,16 +109,10 @@ private val SoftWhite = Color(0xFFF1F4FF)
 private val MutedWhite = Color(0xFFA9B2CB)
 
 @Composable
-fun PartoApp(
-    viewModel: StreamViewModel,
-    onCastSetupError: () -> Unit,
-) {
+fun PartoApp(viewModel: StreamViewModel) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
-    val keyboard = LocalSoftwareKeyboardController.current
-    val focusManager = LocalFocusManager.current
-
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
@@ -209,7 +194,6 @@ fun PartoApp(
                 ) {
                     AppHeader(
                         state = state,
-                        onCastSetupError = onCastSetupError,
                     )
                     when (state.selectedTab) {
                         AppTab.LIBRARY -> LibraryScreen(
@@ -218,20 +202,10 @@ fun PartoApp(
                             onPermission = requestVideoAccess,
                             onPickVideo = { documentLauncher.launch(arrayOf("video/*")) },
                             onPlay = viewModel::playLocalVideo,
-                            onBrowse = { viewModel.selectTab(AppTab.BROWSER) },
+                            onBrowse = { viewModel.selectTab(AppTab.RECEIVER) },
                         )
-                        AppTab.BROWSER -> BrowserScreen(
+                        AppTab.RECEIVER -> ReceiverScreen(
                             state = state,
-                            onPageChanged = viewModel::setBrowserUrl,
-                            onDetected = viewModel::setDetectedWebVideos,
-                            onDirectVideo = viewModel::playDirectLink,
-                            onPlayVideo = viewModel::playWebVideo,
-                            onError = viewModel::setMessage,
-                        )
-                        AppTab.DEVICES -> DeviceScreen(
-                            state = state,
-                            onScan = viewModel::scanDevices,
-                            onSelect = viewModel::selectDlnaDevice,
                         )
                     }
                 }
@@ -241,10 +215,7 @@ fun PartoApp(
 }
 
 @Composable
-private fun AppHeader(
-    state: StreamUiState,
-    onCastSetupError: () -> Unit,
-) {
+private fun AppHeader(state: StreamUiState) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -271,45 +242,12 @@ private fun AppHeader(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = if (state.isCastConnected) "Google Cast"
-                else state.selectedDlnaDevice?.name ?: stringResource(R.string.app_tagline),
+                text = state.selectedVideoTitle ?: stringResource(R.string.app_tagline),
                 color = MutedWhite,
                 style = MaterialTheme.typography.labelMedium,
             )
         }
-        if (state.isCastAvailable) {
-            CastRouteButton(onError = onCastSetupError)
-        }
     }
-}
-
-@Composable
-private fun CastRouteButton(onError: () -> Unit) {
-    AndroidView(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(17.dp))
-            .background(Color.White.copy(alpha = 0.09f))
-            .border(
-                BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
-                RoundedCornerShape(17.dp),
-            ),
-        factory = { context ->
-            val themedContext = ContextThemeWrapper(context, R.style.Theme_Htii_CastButton)
-            try {
-                MediaRouteButton(themedContext).also { button ->
-                    CastButtonFactory.setUpMediaRouteButton(themedContext, button)
-                }
-            } catch (exception: Exception) {
-                Log.e("CastRouteButton", "Unable to initialize the Google Cast button", exception)
-                onError()
-                View(context).apply {
-                    isEnabled = false
-                    contentDescription = context.getString(R.string.cast_unavailable)
-                }
-            }
-        },
-    )
 }
 
 @Composable
@@ -319,8 +257,7 @@ private fun PartoNavigationBar(
 ) {
     val items = listOf(
         Triple(AppTab.LIBRARY, R.string.tab_library, Icons.Outlined.VideoLibrary),
-        Triple(AppTab.BROWSER, R.string.tab_browser, Icons.Outlined.Language),
-        Triple(AppTab.DEVICES, R.string.tab_devices, Icons.Outlined.Devices),
+        Triple(AppTab.RECEIVER, R.string.tab_receiver, Icons.Outlined.Devices),
     )
     NavigationBar(
         containerColor = Color(0xE9121727),
@@ -488,10 +425,10 @@ private fun HeroCard(onBrowse: () -> Unit) {
                 )
                 Spacer(Modifier.height(18.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Cast, null, tint = Aqua, modifier = Modifier.size(17.dp))
+                    Icon(Icons.Outlined.Devices, null, tint = Aqua, modifier = Modifier.size(17.dp))
                     Spacer(Modifier.width(7.dp))
                     Text(
-                        stringResource(R.string.cast_button),
+                        stringResource(R.string.receiver_tab),
                         color = Aqua,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
@@ -557,11 +494,8 @@ private fun VideoRow(video: VideoItem, onPlay: () -> Unit) {
 }
 
 @Composable
-private fun DeviceScreen(
-    state: StreamUiState,
-    onScan: () -> Unit,
-    onSelect: (DlnaDevice) -> Unit,
-) {
+private fun ReceiverScreen(state: StreamUiState) {
+    val context = LocalContext.current
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -573,14 +507,14 @@ private fun DeviceScreen(
         item {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                 Text(
-                    stringResource(R.string.devices_title),
+                    stringResource(R.string.receiver_title),
                     color = SoftWhite,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(5.dp))
                 Text(
-                    stringResource(R.string.devices_subtitle),
+                    stringResource(R.string.receiver_instructions),
                     color = MutedWhite,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -588,100 +522,47 @@ private fun DeviceScreen(
         }
         item {
             GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        if (state.isCastConnected) Icons.Outlined.CheckCircle else Icons.Outlined.Tv,
-                        contentDescription = null,
-                        tint = if (state.isCastConnected) Aqua else Indigo,
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            if (state.isCastConnected) stringResource(R.string.connected_device)
-                            else state.selectedDlnaDevice?.name ?: stringResource(R.string.no_device),
-                            color = SoftWhite,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            if (state.isCastConnected) "Google Cast"
-                            else state.selectedDlnaDevice?.let { "DLNA · ${it.location}" }
-                                ?: stringResource(R.string.dlna_cast_note),
-                            color = MutedWhite,
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                Text(
+                    state.selectedVideoTitle?.let {
+                        stringResource(R.string.selected_video, it)
+                    } ?: stringResource(R.string.no_video_selected),
+                    color = SoftWhite,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(12.dp))
+                if (state.serverUrl.isBlank()) {
+                    Text(stringResource(R.string.choose_video_first), color = MutedWhite)
+                } else {
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                        SelectionContainer {
+                            Text(
+                                state.serverUrl,
+                                color = Aqua,
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(
+                        onClick = {
+                            context.getSystemService(ClipboardManager::class.java)
+                                .setPrimaryClip(ClipData.newPlainText("Parto receiver URL", state.serverUrl))
+                        },
+                    ) {
+                        Icon(Icons.Outlined.ContentCopy, contentDescription = null, tint = Aqua)
+                        Spacer(Modifier.width(7.dp))
+                        Text(stringResource(R.string.copy_address), color = Aqua)
                     }
                 }
             }
         }
         item {
-            AccentButton(
-                label = if (state.isScanning) stringResource(R.string.scanning)
-                else stringResource(R.string.scan_devices),
-                icon = if (state.isScanning) null else Icons.Outlined.Refresh,
-                loading = state.isScanning,
-                onClick = onScan,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        if (state.dlnaDevices.isEmpty() && !state.isScanning) {
-            item {
-                GlassCard(modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Outlined.Info, null, tint = Indigo)
-                    Spacer(Modifier.height(9.dp))
-                    Text(stringResource(R.string.no_dlna_devices), color = MutedWhite)
-                }
-            }
-        }
-        items(state.dlnaDevices, key = { it.id }) { device ->
-            DeviceRow(
-                device = device,
-                selected = state.selectedDlnaDevice?.id == device.id,
-                onClick = { onSelect(device) },
-            )
-        }
-        item {
             Text(
-                stringResource(R.string.supported_notice),
+                stringResource(R.string.http_network_warning),
                 color = MutedWhite,
                 style = MaterialTheme.typography.labelSmall,
             )
-        }
-    }
-}
-
-@Composable
-private fun DeviceRow(
-    device: DlnaDevice,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    GlassCard(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
-        padding = 14.dp,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Tv, null, tint = if (selected) Aqua else Indigo, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    device.name,
-                    color = SoftWhite,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    device.location,
-                    color = MutedWhite,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            if (selected) Icon(Icons.Outlined.CheckCircle, null, tint = Aqua)
         }
     }
 }

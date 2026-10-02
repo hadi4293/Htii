@@ -6,9 +6,4 @@
         <item name="android:statusBarColor">#FFFFFF</item>
         <item name="android:navigationBarColor">#FFFFFF</item>
     </style>
-
-    <style name="Theme.Htii.CastButton" parent="Theme.Htii">
-        <item name="android:colorBackground">#FF080D19</item>
-        <item name="android:colorForeground">#FFF1F4FF</item>
-    </style>
 </resources>
